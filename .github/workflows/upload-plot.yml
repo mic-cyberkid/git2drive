@@ -1,4 +1,4 @@
-name: Generate Plot and Upload to Drive
+name: Plot & Upload to Google Drive
 
 on:
   push:
@@ -6,26 +6,62 @@ on:
   workflow_dispatch:
 
 jobs:
-  upload:
+  plot-and-upload:
     runs-on: ubuntu-latest
-    env:
-      GOOGLE_CREDENTIALS_BASE64: ${{ secrets.GOOGLE_CREDENTIALS_BASE64 }}
-      USER_EMAIL: ${{ secrets.USER_EMAIL }}  # <-- New: For impersonation
-      PARENT_FOLDER_ID: ${{ secrets.PARENT_FOLDER_ID }}  # Optional: Your folder ID
+    permissions:
+      contents: read
 
     steps:
-      - name: Checkout repository
+      # -------------------------------------------------
+      - name: Checkout code
         uses: actions/checkout@v4
 
+      # -------------------------------------------------
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
 
-      - name: Install Python dependencies
+      # -------------------------------------------------
+      - name: Install Python packages
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install matplotlib google-auth google-auth-oauthlib google-api-python-client
 
-      - name: Run generate_and_upload.py
-        run: python generate_and_upload.py
+      # -------------------------------------------------
+      - name: Decode secrets → files
+        env:
+          CLIENT_JSON: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          TOKEN_B64:   ${{ secrets.GDRIVE_TOKEN_PICKLE }}
+        run: |
+          echo "$CLIENT_JSON" > client_secret.json
+          echo "$TOKEN_B64" | base64 -d > token.pickle
+          echo "Secrets decoded"
+
+      # -------------------------------------------------
+      - name: Generate plot
+        run: |
+          python - <<'PY'
+          import matplotlib.pyplot as plt
+          import numpy as np, os
+
+          x = np.linspace(0, 10, 200)
+          y = np.sin(x) * np.exp(-x/5)
+
+          plt.figure(figsize=(10,6))
+          plt.plot(x, y, label='sin(x)·e^(-x/5)', color='teal')
+          plt.title('Plot generated in GitHub Actions')
+          plt.xlabel('x')
+          plt.ylabel('y')
+          plt.legend()
+          plt.grid(alpha=0.3)
+
+          out = 'plot.png'
+          plt.savefig(out, dpi=200, bbox_inches='tight')
+          print(f"Plot saved → {out}")
+          PY
+
+      # -------------------------------------------------
+      - name: Upload to Google Drive
+        run: |
+          python upload_to_drive.py
