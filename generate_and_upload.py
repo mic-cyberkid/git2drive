@@ -1,10 +1,9 @@
-# generate_and_upload.py   (only the top part changed)
-
 import os
 import json
 import tempfile
 import matplotlib.pyplot as plt
-import base64          # <-- moved to top-level import
+import base64
+import numpy as np
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -14,14 +13,24 @@ from googleapiclient.http import MediaFileUpload
 # ------------------------------------------------------------------
 CREDENTIALS_B64 = os.getenv('GOOGLE_CREDENTIALS_BASE64')
 if not CREDENTIALS_B64:
-    # In CI we *expect* the secret – fail fast with a clear message
     raise RuntimeError(
         'GOOGLE_CREDENTIALS_BASE64 environment variable is missing.\n'
         'Add it as a repository secret (base64-encoded service-account JSON).'
     )
 
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
-PARENT_FOLDER_ID = os.getenv('PARENT_FOLDER_ID')   # optional
+USER_EMAIL = os.getenv('USER_EMAIL')  # Your personal email for impersonation
+if not USER_EMAIL:
+    raise RuntimeError(
+        'USER_EMAIL environment variable is missing.\n'
+        'Add your personal Google email (e.g., yourname@gmail.com) as a repo secret.'
+    )
+
+SCOPES = ['https://www.googleapis.com/auth/drive']  # Full Drive scope for impersonation
+
+PARENT_FOLDER_ID = os.getenv('PARENT_FOLDER_ID')  # Your shared folder ID (optional)
+if not PARENT_FOLDER_ID:
+    print("Warning: No PARENT_FOLDER_ID – uploading to root of your Drive.")
+
 PLOT_FILE_PATH = 'simple_plot.png'
 # ------------------------------------------------------------------
 
@@ -32,16 +41,17 @@ def _create_credentials_from_base64() -> service_account.Credentials:
     json.dump(raw_json, tmp)
     tmp.close()
 
-    creds = service_account.Credentials.from_service_account_file(tmp.name, scopes=SCOPES)
+    # Key: Impersonate the user – uploads use THEIR quota/ownership
+    creds = service_account.Credentials.from_service_account_file(
+        tmp.name, scopes=SCOPES, subject=USER_EMAIL
+    )
     creds._temp_path = tmp.name
     return creds
-
 
 def main():
     # ------------------------------------------------------------------
     # 2. Generate the plot
     # ------------------------------------------------------------------
-    import numpy as np
     x = np.linspace(0, 10, 200)
     y = np.sin(x) * np.exp(-x/5)
 
@@ -55,11 +65,10 @@ def main():
     plt.tight_layout()
     plt.savefig(PLOT_FILE_PATH, dpi=150)
     plt.close()
-    
     print(f"Plot saved → {PLOT_FILE_PATH}")
 
     # ------------------------------------------------------------------
-    # 3. Authenticate using the base64 secret
+    # 3. Authenticate with impersonation
     # ------------------------------------------------------------------
     credentials = _create_credentials_from_base64()
     service = build('drive', 'v3', credentials=credentials)
@@ -72,7 +81,7 @@ def main():
         file_metadata['parents'] = [PARENT_FOLDER_ID]
 
     # ------------------------------------------------------------------
-    # 5. Upload
+    # 5. Upload (as the impersonated user)
     # ------------------------------------------------------------------
     media = MediaFileUpload(PLOT_FILE_PATH, resumable=True)
     uploaded = service.files().create(
@@ -94,6 +103,4 @@ def main():
             print(f"Warning: could not delete temp credential file: {e}")
 
 if __name__ == '__main__':
-    # Import here to keep the global scope clean (base64 is only needed once)
-    import base64
     main()
