@@ -1,50 +1,41 @@
+# generate_and_upload.py   (only the top part changed)
+
 import os
 import json
-import base64
 import tempfile
 import matplotlib.pyplot as plt
+import base64          # <-- moved to top-level import
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # ------------------------------------------------------------------
-# 1. CONFIGURATION (all driven by environment variables)
+# 1. CONFIGURATION
 # ------------------------------------------------------------------
-# Base64-encoded service-account JSON (set in GitHub Secrets)
 CREDENTIALS_B64 = os.getenv('GOOGLE_CREDENTIALS_BASE64')
 if not CREDENTIALS_B64:
-    raise RuntimeError('GOOGLE_CREDENTIALS_BASE64 environment variable is missing.')
+    # In CI we *expect* the secret – fail fast with a clear message
+    raise RuntimeError(
+        'GOOGLE_CREDENTIALS_BASE64 environment variable is missing.\n'
+        'Add it as a repository secret (base64-encoded service-account JSON).'
+    )
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
-
-# Optional: folder ID where the file should land (set in GitHub Secrets)
-PARENT_FOLDER_ID = os.getenv('PARENT_FOLDER_ID')   # leave empty/None → root
-
-# Where the plot will be saved locally (temporary file is fine)
+PARENT_FOLDER_ID = os.getenv('PARENT_FOLDER_ID')   # optional
 PLOT_FILE_PATH = 'simple_plot.png'
 # ------------------------------------------------------------------
 
 def _create_credentials_from_base64() -> service_account.Credentials:
-    """
-    Decode the base64 string, write it to a temporary file,
-    and return a Credentials object.
-    """
-    raw_json = json.loads(
-        # The secret is the *full* JSON string, base64-encoded
-        base64.b64decode(CREDENTIALS_B64).decode('utf-8')
-    )
+    raw_json = json.loads(base64.b64decode(CREDENTIALS_B64).decode('utf-8'))
 
-    # Write to a temporary file (required by the client library)
     tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
     json.dump(raw_json, tmp)
     tmp.close()
 
-    creds = service_account.Credentials.from_service_account_file(
-        tmp.name, scopes=SCOPES
-    )
-    # Store the path for later cleanup
+    creds = service_account.Credentials.from_service_account_file(tmp.name, scopes=SCOPES)
     creds._temp_path = tmp.name
     return creds
+
 
 def main():
     # ------------------------------------------------------------------
