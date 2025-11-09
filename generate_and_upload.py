@@ -64,6 +64,7 @@ def main():
     plt.tight_layout()
     plt.savefig(PLOT_FILE_PATH, dpi=150)
     plt.close()
+    
     print(f"Plot saved → {PLOT_FILE_PATH}")
 
     # ------------------------------------------------------------------
