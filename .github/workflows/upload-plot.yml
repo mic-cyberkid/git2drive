@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOOGLE_CREDENTIALS_BASE64: ${{ secrets.GOOGLE_CREDENTIALS_BASE64 }}
-      PARENT_FOLDER_ID: ${{ secrets.PARENT_FOLDER_ID }}   # optional
+      USER_EMAIL: ${{ secrets.USER_EMAIL }}  # <-- New: For impersonation
+      PARENT_FOLDER_ID: ${{ secrets.PARENT_FOLDER_ID }}  # Optional: Your folder ID
 
     steps:
       - name: Checkout repository
